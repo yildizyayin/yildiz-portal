@@ -1,0 +1,91 @@
+{
+  "name": "yildiz-deneme-platformu",
+  "type": "javascript",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-10",
+  "compatibility_flags": ["nodejs_compat"],
+  
+  "observability": {
+    "enabled": true
+  },
+
+  "vars": {
+    "NODE_ENV": "production",
+    "LOG_LEVEL": "info",
+    "CORS_ORIGIN": "https://deneme.yildiz.com.tr"
+  },
+
+  "env": {
+    "development": {
+      "vars": {
+        "NODE_ENV": "development",
+        "LOG_LEVEL": "debug",
+        "CORS_ORIGIN": "http://localhost:5173"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "yildiz-deneme-dev",
+          "database_id": "dev-db-placeholder"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS",
+          "id": "dev-sessions-placeholder"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "FILES",
+          "bucket_name": "yildiz-deneme-dev"
+        }
+      ]
+    },
+    "production": {
+      "routes": [
+        {
+          "pattern": "deneme.yildiz.com.tr",
+          "zone_name": "yildiz.com.tr"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "yildiz-deneme-prod",
+          "database_id": "prod-db-placeholder"
+        }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "SESSIONS",
+          "id": "prod-sessions-placeholder"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "FILES",
+          "bucket_name": "yildiz-deneme-prod"
+        }
+      ],
+      "services": [
+        {
+          "binding": "ERP_SERVICE",
+          "service": "yildiz-erp-worker",
+          "environment": "production"
+        }
+      ]
+    }
+  },
+
+  "assets": {
+    "directory": "dist/public",
+    "binding": "ASSETS"
+  },
+
+  "build": {
+    "command": "npm run build",
+    "cwd": "./",
+    "watch_paths": ["src/**/*.ts", "src/**/*.tsx"]
+  }
+}
