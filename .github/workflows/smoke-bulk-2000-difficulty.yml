@@ -1,0 +1,35 @@
+name: Smoke Bulk 2000 Difficulty
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloudflare Git deployment
+        run: sleep 70
+      - name: Verify live worker and frontend bulk import
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          HEALTH="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE/api/health")"
+          echo "$HEALTH" | grep -q '"ok":true'
+          HTML="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE/")"
+          ASSET="$(printf '%s' "$HTML" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
+          test -n "$ASSET"
+          curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE$ASSET" -o /tmp/app.js
+          grep -q 'Toplu sınav / deneme yükle · 2.000 satır' /tmp/app.js
+          grep -q 'difficulty_level' /tmp/app.js
+          grep -q 'Aynı sezon + aynı kod varsa mevcut kayıt güncellenir' /tmp/app.js
+          grep -q 'Zorluk seviyesi' /tmp/app.js
+      - name: Verify bulk endpoint is protected
+        shell: bash
+        run: |
+          code="$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{"season_id":"x","rows":[]}' https://yildiz-deneme-platformu.rtsgida.workers.dev/api/exams/bulk)"
+          test "$code" = "401"
