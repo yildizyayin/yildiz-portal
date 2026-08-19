@@ -1,0 +1,51 @@
+name: Fix final TypeScript annotations
+
+on:
+  push:
+    branches: [deneme-final-2026-08-19]
+    paths: [.fix-types.ready]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: deneme-final-2026-08-19
+      - name: Apply targeted type fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/App.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = "async function api(path:string, opts:RequestInit={}){\n  const headers:any={'Content-Type':'application/json',...(opts.headers||{})};\n  const r=await fetch(path,{...opts,headers,credentials:'same-origin'});\n  const data=await r.json().catch(()=>({ok:false,error:'Sunucudan geçersiz yanıt'}));"
+          new = "async function api(path:string, opts:RequestInit={}):Promise<any>{\n  const headers:any={'Content-Type':'application/json',...(opts.headers||{})};\n  const r=await fetch(path,{...opts,headers,credentials:'same-origin'});\n  const data:any=await r.json().catch(()=>({ok:false,error:'Sunucudan geçersiz yanıt'}));"
+          if old not in s:
+              raise SystemExit('App.tsx target not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+
+          p = Path('src/index.ts')
+          s = p.read_text(encoding='utf-8')
+          old1 = "const body = await c.req.json<{ email?: string; password?: string }>().catch(() => ({}));"
+          new1 = "const body = await c.req.json<{ email?: string; password?: string }>().catch(() => ({} as { email?: string; password?: string }));"
+          old2 = "const b = await c.req.json<{ current_password?: string; new_password?: string }>().catch(() => ({}));"
+          new2 = "const b = await c.req.json<{ current_password?: string; new_password?: string }>().catch(() => ({} as { current_password?: string; new_password?: string }));"
+          if old1 not in s or old2 not in s:
+              raise SystemExit('index.ts target not found')
+          p.write_text(s.replace(old1, new1).replace(old2, new2), encoding='utf-8')
+          PY
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .fix-types.ready
+          git add -A
+          git commit -m "Types: fix strict JSON response annotations"
+          git push origin HEAD:deneme-final-2026-08-19
