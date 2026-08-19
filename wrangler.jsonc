@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "yildiz-deneme-platformu",
-  "main": "./src/index.ts",
+  "main": "./src/index-final.ts",
   "compatibility_date": "2026-08-19",
   "build": {
     "command": "npm run build",
