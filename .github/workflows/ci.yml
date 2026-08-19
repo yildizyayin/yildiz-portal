@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: package.json
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Verify source snapshots and build
+      - name: Production build
         run: npm run build
       - name: Generate Cloudflare types and type-check
         run: npm run type-check
@@ -31,7 +31,7 @@ jobs:
       - name: Verify scope lock
         shell: bash
         run: |
-          if grep -RniE "(optik|öğrenci karnesi|kazanım analizi|net hesaplama|puan hesaplama|branş deneme)" src/App.tsx src/index.ts; then
+          if grep -RniE "(optik|öğrenci karnesi|kazanım analizi|net hesaplama|puan hesaplama|branş deneme)" src/App.tsx src/index.ts src/AppFinal.tsx src/index-final.ts; then
             echo "Forbidden measurement/evaluation scope detected"
             exit 1
           fi
