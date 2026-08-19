@@ -1,0 +1,36 @@
+name: Fix Answer Tree Markup
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: answer-key-tree-final-2026-08-19
+      - name: Fix tree row semantics and lock document type on edit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/AppFinal.tsx')
+          s=p.read_text()
+          old='''function ArchiveFolder({depth,label,nodeKey,open,toggle,meta,icon,actions,children}:{depth:number;label:string;nodeKey:string;open:Set<string>;toggle:(k:string)=>void;meta?:string;icon?:string;actions?:any;children:any}){const isOpen=open.has(nodeKey);return <div className="tree-node"><button className={`tree-folder depth-${Math.min(depth,7)}`} style={{paddingLeft:14+depth*24}} onClick={()=>toggle(nodeKey)}><span className={`tree-caret ${isOpen?'open':''}`}>›</span><span className={`tree-folder-icon ${icon||''}`}>📁</span><b>{label}</b>{meta&&<small>{meta}</small>}<span className="tree-spacer"/>{actions}</button>{isOpen&&<div className="tree-children">{children}</div>}</div>}'''
+          new='''function ArchiveFolder({depth,label,nodeKey,open,toggle,meta,icon,actions,children}:{depth:number;label:string;nodeKey:string;open:Set<string>;toggle:(k:string)=>void;meta?:string;icon?:string;actions?:any;children:any}){const isOpen=open.has(nodeKey);return <div className="tree-node"><div className={`tree-folder depth-${Math.min(depth,7)}`} style={{paddingLeft:14+depth*24}} onClick={()=>toggle(nodeKey)} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle(nodeKey)}}}><span className={`tree-caret ${isOpen?'open':''}`}>›</span><span className={`tree-folder-icon ${icon||''}`}>📁</span><b>{label}</b>{meta&&<small>{meta}</small>}<span className="tree-spacer"/>{actions}</div>{isOpen&&<div className="tree-children">{children}</div>}</div>}'''
+          if old not in s: raise SystemExit('ArchiveFolder anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('<select value={b.asset_type} onChange={e=>setB({...b,asset_type:e.target.value})}>{Object.entries(DIGITAL_TYPES)', '<select value={b.asset_type} disabled={!!item} onChange={e=>setB({...b,asset_type:e.target.value})}>{Object.entries(DIGITAL_TYPES)',1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppFinal.tsx
+          git commit -m "Harden answer archive tree interactions" || exit 0
+          git push origin HEAD:answer-key-tree-final-2026-08-19
