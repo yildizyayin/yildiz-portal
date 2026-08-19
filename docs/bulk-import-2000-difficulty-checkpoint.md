@@ -1,0 +1,1 @@
+Bulk import hardening checkpoint: uploaded user workbook had 167 data rows, including one original Demo sample row; actual TYT rows use subject column for difficulty and an unlabeled final column for active=yes. Final importer will remain backward-compatible with this file while generating a corrected template.
