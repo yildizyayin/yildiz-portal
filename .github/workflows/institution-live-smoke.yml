@@ -1,0 +1,43 @@
+name: Institution Portal Production Smoke
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloudflare Git deployment
+        run: sleep 55
+      - name: Check Worker health
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          HEALTH="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE/api/health")"
+          echo "$HEALTH" | grep -q '"ok":true'
+      - name: Check deployed frontend brand and institution UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          HTML="$(curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE/")"
+          ASSET="$(printf '%s' "$HTML" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
+          test -n "$ASSET"
+          curl --fail --silent --show-error --retry 4 --retry-delay 5 "$BASE$ASSET" -o /tmp/app.js
+          grep -q 'Bilginin Yörüngesinde' /tmp/app.js
+          grep -q 'Gelen / Gelecek Denemeler' /tmp/app.js
+          grep -q 'Siparişi Onayla' /tmp/app.js
+      - name: Check protected APIs remain protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          for path in /api/reports/summary /api/opportunities /api/orders; do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE$path")"
+            test "$code" = "401"
+          done
