@@ -7,7 +7,7 @@ INSERT INTO users (
 ) VALUES (
   'user_super_admin',
   'admin@yildizyayin.com',
-  'pbkdf2$100000$d203b3883702c9ab5d9917972badfdfd$9f9234429bd6579a70093be471f343075b7c979888b260b7ada2c6c8d606ad23',
+  'pbkdf2$100000$fc14bf05ee4bf969424e5f9772c0381a$b58d8de85c65b67bd884301b223d30bbf7ffb4fc8d4161cae75a0294481e7cd7',
   'Yıldız Yayın Yönetici',
   'SUPER_ADMIN',
   'ACTIVE',
