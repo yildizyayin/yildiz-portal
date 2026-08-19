@@ -20,6 +20,12 @@
       "database_id": "b9977324-1294-4bfc-913d-51258c052395"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "yildiz-portal-media"
+    }
+  ],
   "observability": {
     "enabled": true,
     "logs": { "enabled": true, "head_sampling_rate": 1 },
