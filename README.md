@@ -1,82 +1,54 @@
 # Yıldız Deneme Platformu
 
-Production-ready deneme sınavı yönetim sistemi. Cloudflare Workers + D1 + React.
+Cloudflare Workers + D1 + React tabanlı deneme takip, kurum planlama, satış, sipariş, tedarik, teslimat ve ticari raporlama platformu.
 
-## Özellikler
+## Kapsam
 
-- 📅 Merkezi deneme takvimi
-- 🏫 Kurum planlama ve yönetimi
-- 💼 Satış fırsatı ve sipariş sistemi
-- 📦 Tedarik ve teslimat takibi
-- 📊 Ticari raporlama
-- 📄 PDF/Excel export
-- 🔐 Role-based access control
-- 📈 Premium dashboard
+- Merkezi deneme takvimi
+- Sınıf düzeyine göre kurum planlama
+- Kuruma özel aylık ve sezonluk takvim
+- PDF / Excel / yazdırma çıktıları
+- Satış fırsatları ve sipariş yönetimi
+- Toplu yayınevi siparişleri
+- Tedarik ve eksik ürün takibi
+- Kurum teslimatları
+- Ticari raporlama
+- Rol bazlı erişim
 
-## Kurulum
+Öğrenci, optik okuma, sınav sonucu veya ölçme-değerlendirme modülleri bu ürünün kapsamında değildir.
+
+## Local development
 
 ```bash
 npm install
-```
-
-## Development
-
-```bash
 npm run dev
 ```
 
-## Database
-
-### Migrations
-
-```bash
-npm run migrate:dev
-npm run seed:dev
-```
-
-## Build & Deploy
+## Build
 
 ```bash
 npm run build
-npm run deploy:dev  # Development
-npm run deploy      # Production
-```
-
-## Testing
-
-```bash
+npm run type-check
 npm test
-npm test:watch
-npm test:e2e
 ```
 
-## Teknoloji Stack
+## Deploy
 
-- **Backend**: Cloudflare Workers + Hono
-- **Frontend**: React 18 + Vite
-- **Database**: Cloudflare D1 (SQLite)
-- **Cache**: Cloudflare KV
-- **Storage**: Cloudflare R2
-- **Export**: Browser Rendering API
-- **Language**: TypeScript
+Production deploy Cloudflare Workers Git integration üzerinden `main` branch push'larında otomatik çalışır. Worker yapılandırması `wrangler.jsonc` dosyasındadır.
+
+## Database
+
+Production D1 binding adı: `DB`
+
+Migration dosyaları `migrations/` klasöründedir.
 
 ## Roller
 
-- **SUPER_ADMIN**: Sistem yönetimi
-- **ADMIN**: İş yönetimi
-- **PERSONEL**: Satış ve kurum yönetimi
-- **OPERASYON**: Tedarik ve teslimat
-- **KURUM**: Kendi deneme yönetimi
-
-## API
-
-API endpoint'leri `/api/` altında.
-
-Detaylar: [API Documentation](./API.md)
-
-## Kontribüsyon
-
-Yıldız Yayın iç geliştirme.
+- SUPER_ADMIN
+- ADMIN
+- PERSONEL
+- OPERASYON
+- KURUM
 
 ## License
 
