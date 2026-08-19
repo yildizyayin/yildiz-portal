@@ -15,10 +15,10 @@ const MONTHS = [
 const fmtMoney=(n:any)=>new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:0}).format(Number(n||0)/100);
 const fmtDate=(s?:string)=>s?new Intl.DateTimeFormat('tr-TR',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(`${s}T12:00:00`)):'—';
 const fmtShort=(s?:string)=>s?new Intl.DateTimeFormat('tr-TR',{day:'2-digit',month:'short'}).format(new Date(`${s}T12:00:00`)):'—';
-async function api(path:string, opts:RequestInit={}){
+async function api(path:string, opts:RequestInit={}):Promise<any>{
   const headers:any={'Content-Type':'application/json',...(opts.headers||{})};
   const r=await fetch(path,{...opts,headers,credentials:'same-origin'});
-  const data=await r.json().catch(()=>({ok:false,error:'Sunucudan geçersiz yanıt'}));
+  const data:any=await r.json().catch(()=>({ok:false,error:'Sunucudan geçersiz yanıt'}));
   if(r.status===401 && path!='/api/auth/login' && path!='/api/auth/me'){ location.reload(); }
   if(!r.ok || data.ok===false) throw new Error(data.error||'İşlem başarısız');
   return data;

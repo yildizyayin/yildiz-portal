@@ -69,7 +69,7 @@ app.get('/api/setup/status', async c => {
 
 app.post('/api/auth/login', async c => {
   const db = dbOf(c); if (!db) return fail(c, 'Veritabanı henüz bağlanmadı.', 503);
-  const body = await c.req.json<{ email?: string; password?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ email?: string; password?: string }>().catch(() => ({} as { email?: string; password?: string }));
   const email = body.email?.trim().toLowerCase();
   if (!email || !body.password) return fail(c, 'E-posta ve şifre gerekli.');
   const user = await db.prepare(`SELECT * FROM users WHERE lower(email)=? AND deleted_at IS NULL`).bind(email).first<UserRow & { password_hash: string }>();
@@ -119,7 +119,7 @@ app.post('/api/auth/logout', async c => {
 });
 app.post('/api/auth/change-password', async c => {
   const db = dbOf(c)!; const user = c.get('user');
-  const b = await c.req.json<{ current_password?: string; new_password?: string }>().catch(() => ({}));
+  const b = await c.req.json<{ current_password?: string; new_password?: string }>().catch(() => ({} as { current_password?: string; new_password?: string }));
   if (!b.current_password || !b.new_password || b.new_password.length < 10) return fail(c, 'Yeni şifre en az 10 karakter olmalı.');
   const row = await db.prepare(`SELECT password_hash FROM users WHERE id=?`).bind(user.id).first<{ password_hash: string }>();
   if (!row || !(await verifyPassword(b.current_password, row.password_hash))) return fail(c, 'Mevcut şifre hatalı.', 401);
