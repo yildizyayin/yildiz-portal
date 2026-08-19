@@ -1,16 +1,15 @@
 {
   "name": "yildiz-deneme-platformu",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare-source": "node scripts/reconstruct.mjs",
-    "dev": "npm run prepare-source && vite --host 0.0.0.0",
-    "build": "npm run prepare-source && vite build",
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
     "preview": "vite preview",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
-    "type-check": "npm run prepare-source && wrangler types && tsc --noEmit",
+    "type-check": "wrangler types && tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
