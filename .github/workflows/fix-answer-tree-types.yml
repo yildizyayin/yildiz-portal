@@ -1,0 +1,34 @@
+name: Fix Answer Tree Types
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: answer-key-tree-final-2026-08-19
+      - name: Fix form-code Set typing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/AppFinal.tsx')
+          s=p.read_text()
+          old="const formCodes=[...new Set(optical.filter((a:any)=>['SEKONIC','BICOM'].includes(a.asset_type)).map((a:any)=>String(a.form_code||'KODSUZ')))].sort();"
+          new="const formCodes:string[]=[...new Set<string>(optical.filter((a:any)=>['SEKONIC','BICOM'].includes(a.asset_type)).map((a:any)=>String(a.form_code||'KODSUZ')))].sort();"
+          if old not in s: raise SystemExit('formCodes anchor missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppFinal.tsx
+          git commit -m "Fix answer archive tree TypeScript key typing"
+          git push origin HEAD:answer-key-tree-final-2026-08-19
