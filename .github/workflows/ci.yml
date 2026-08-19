@@ -31,7 +31,9 @@ jobs:
       - name: Verify scope lock
         shell: bash
         run: |
-          if grep -RniE "(optik|öğrenci karnesi|kazanım analizi|net hesaplama|puan hesaplama|branş deneme)" src/App.tsx src/index.ts src/AppFinal.tsx src/index-final.ts; then
+          # Optical form/document files are allowed as a download library.
+          # Measurement, camera reading, scoring and academic analysis remain out of scope.
+          if grep -RniE "(öğrenci karnesi|kazanım analizi|soru analizi|net hesaplama|puan hesaplama|branş deneme|optik okuma|optik.*kamera|kamera.*optik)" src/App.tsx src/index.ts src/AppFinal.tsx src/index-final.ts; then
             echo "Forbidden measurement/evaluation scope detected"
             exit 1
           fi
