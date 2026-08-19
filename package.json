@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "prepare-source": "node scripts/reconstruct.mjs",
+    "dev": "npm run prepare-source && vite --host 0.0.0.0",
+    "build": "npm run prepare-source && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
-    "type-check": "wrangler types && tsc --noEmit",
+    "type-check": "npm run prepare-source && wrangler types && tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
