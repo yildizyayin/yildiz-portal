@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   ASSETS?: Fetcher;
+  MEDIA?: R2Bucket;
   APP_ENV?: string;
   APP_NAME?: string;
   ERP_BASE_URL?: string;
