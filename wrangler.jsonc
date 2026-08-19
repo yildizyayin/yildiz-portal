@@ -3,6 +3,10 @@
   "name": "yildiz-deneme-platformu",
   "main": "./src/index.ts",
   "compatibility_date": "2026-08-19",
+  "build": {
+    "command": "npm run build",
+    "watch_dir": ["src", ".reconstruct", "scripts"]
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
