@@ -1,0 +1,39 @@
+name: Smoke Answer Key Archive Tree
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Cloudflare Git deployment
+        run: sleep 70
+      - name: Verify live Worker and frontend archive tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          HEALTH="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 "$BASE/api/health")"
+          echo "$HEALTH" | grep -q '"ok":true'
+          HTML="$(curl --fail --silent --show-error --retry 5 --retry-delay 5 "$BASE/")"
+          ASSET="$(printf '%s' "$HTML" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | cut -d'"' -f2)"
+          test -n "$ASSET"
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 "$BASE$ASSET" -o /tmp/app.js
+          grep -q 'İlkokul / Ortaokul / Lise' /tmp/app.js
+          grep -q 'Optik Dokümanları / Formları' /tmp/app.js
+          grep -q 'Form Kodu:' /tmp/app.js
+          grep -q 'Sekonic' /tmp/app.js
+          grep -q 'Bicom' /tmp/app.js
+          grep -q "yalnız Süper Admin" /tmp/app.js
+      - name: Verify archive API remains protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://yildiz-deneme-platformu.rtsgida.workers.dev"
+          code="$(curl --silent --output /dev/null --write-out '%{http_code}' "$BASE/api/digital-assets")"
+          test "$code" = "401"
