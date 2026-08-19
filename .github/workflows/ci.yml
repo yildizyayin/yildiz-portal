@@ -1,0 +1,37 @@
+name: Validate Deneme Platformu
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify source snapshots and build
+        run: npm run build
+      - name: Generate Cloudflare types and type-check
+        run: npm run type-check
+      - name: Unit tests
+        run: npm test
+      - name: Verify scope lock
+        shell: bash
+        run: |
+          if grep -RniE "(optik|öğrenci karnesi|kazanım analizi|net hesaplama|puan hesaplama|branş deneme)" src/App.tsx src/index.ts; then
+            echo "Forbidden measurement/evaluation scope detected"
+            exit 1
+          fi
