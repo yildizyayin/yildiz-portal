@@ -28,6 +28,7 @@ export async function ensureFinalSchema(db: D1Database) {
     asset_type TEXT NOT NULL,
     title TEXT,
     format_name TEXT,
+    form_code TEXT,
     file_name TEXT,
     content_type TEXT,
     file_size INTEGER DEFAULT 0,
@@ -40,12 +41,14 @@ export async function ensureFinalSchema(db: D1Database) {
     FOREIGN KEY (exam_id) REFERENCES exams(id),
     FOREIGN KEY (created_by) REFERENCES users(id)
   )`).run();
+  await addColumn(db, 'digital_exam_assets', 'form_code', 'TEXT');
 
   await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login_code ON users(login_code) WHERE login_code IS NOT NULL`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_exams_exam_type ON exams(exam_type)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_orders_exam_applied ON orders(exam_applied_at)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_exam ON digital_exam_assets(exam_id,is_active)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_type ON digital_exam_assets(asset_type)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_form ON digital_exam_assets(exam_id,form_code,asset_type)`).run();
 
   const grades = [
     ['grade_1','1. Sınıf','1',1],['grade_2','2. Sınıf','2',2],['grade_3','3. Sınıf','3',3],['grade_4','4. Sınıf','4',4],
@@ -58,7 +61,7 @@ export async function ensureFinalSchema(db: D1Database) {
       .bind(id,name,code,sort,now(),now()).run();
   }
 
-  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version','2026-08-19-final-answerkeys','TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(now()).run();
+  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version','2026-08-19-answer-key-tree','TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(now()).run();
 }
 
 export const subjectOptions = [
