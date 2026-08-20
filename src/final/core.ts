@@ -6,6 +6,8 @@ export interface Env {
   APP_NAME?: string;
   ERP_BASE_URL?: string;
   ERP_CUSTOMERS_PATH?: string;
+  PHONE_NOTIFICATION_WEBHOOK_URL?: string;
+  PHONE_NOTIFICATION_WEBHOOK_TOKEN?: string;
 }
 
 export interface UserRow {
@@ -17,6 +19,8 @@ export interface UserRow {
   institution_id?: string | null;
   must_change_password?: number;
   login_code?: string | null;
+  phone?: string | null;
+  notification_enabled?: number;
 }
 
 export const now = () => new Date().toISOString();
