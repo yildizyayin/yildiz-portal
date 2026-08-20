@@ -12,6 +12,8 @@ async function addColumn(db: D1Database, table: string, name: string, sqlType: s
 
 export async function ensureFinalSchema(db: D1Database) {
   await addColumn(db, 'users', 'login_code', 'TEXT');
+  await addColumn(db, 'users', 'phone', 'TEXT');
+  await addColumn(db, 'users', 'notification_enabled', 'INTEGER DEFAULT 1');
   await addColumn(db, 'exams', 'exam_type', "TEXT DEFAULT 'DENEME'");
   await addColumn(db, 'exams', 'subject', 'TEXT');
   await addColumn(db, 'exams', 'difficulty_level', 'TEXT');
@@ -20,8 +22,11 @@ export async function ensureFinalSchema(db: D1Database) {
   await addColumn(db, 'orders', 'delivered_at', 'DATETIME');
   await addColumn(db, 'orders', 'exam_applied_at', 'DATETIME');
   await addColumn(db, 'orders', 'exam_applied_by', 'TEXT');
+  await addColumn(db, 'orders', 'deleted_at', 'DATETIME');
   await addColumn(db, 'publisher_orders', 'b2b_ordered_at', 'DATETIME');
   await addColumn(db, 'publisher_orders', 'b2b_notes', 'TEXT');
+  await addColumn(db, 'tasks', 'priority', "TEXT DEFAULT 'MEDIUM'");
+  await addColumn(db, 'tasks', 'completed_at', 'DATETIME');
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS digital_exam_assets (
     id TEXT PRIMARY KEY,
@@ -44,13 +49,42 @@ export async function ensureFinalSchema(db: D1Database) {
   )`).run();
   await addColumn(db, 'digital_exam_assets', 'form_code', 'TEXT');
 
+  await db.prepare(`CREATE TABLE IF NOT EXISTS user_permission_overrides (
+    user_id TEXT NOT NULL,
+    permission_code TEXT NOT NULL,
+    is_allowed INTEGER NOT NULL DEFAULT 1,
+    updated_by TEXT,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (user_id, permission_code),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (updated_by) REFERENCES users(id)
+  )`).run();
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS reminder_delivery_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    exam_id TEXT NOT NULL,
+    reminder_type TEXT NOT NULL,
+    reminder_date DATE NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'IN_APP',
+    status TEXT NOT NULL DEFAULT 'CREATED',
+    provider_response TEXT,
+    created_at DATETIME NOT NULL,
+    UNIQUE(user_id, exam_id, reminder_type, reminder_date, channel),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (exam_id) REFERENCES exams(id)
+  )`).run();
+
   await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login_code ON users(login_code) WHERE login_code IS NOT NULL`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_exams_exam_type ON exams(exam_type)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_exams_difficulty ON exams(difficulty_level)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_orders_exam_applied ON orders(exam_applied_at)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_orders_deleted_at ON orders(deleted_at)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_exam ON digital_exam_assets(exam_id,is_active)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_type ON digital_exam_assets(asset_type)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_digital_exam_assets_form ON digital_exam_assets(exam_id,form_code,asset_type)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_permission_user ON user_permission_overrides(user_id)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_reminder_delivery_user_date ON reminder_delivery_log(user_id,reminder_date)`).run();
 
   const grades = [
     ['grade_1','1. Sınıf','1',1],['grade_2','2. Sınıf','2',2],['grade_3','3. Sınıf','3',3],['grade_4','4. Sınıf','4',4],
@@ -63,7 +97,7 @@ export async function ensureFinalSchema(db: D1Database) {
       .bind(id,name,code,sort,now(),now()).run();
   }
 
-  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version','2026-08-19-bulk-2000-difficulty','TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(now()).run();
+  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version','2026-08-21-permissions-reminders-orders','TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(now()).run();
 }
 
 export const subjectOptions = [
