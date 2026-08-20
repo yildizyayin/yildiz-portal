@@ -37,6 +37,24 @@ const requireRoles = (...roles: string[]) => async (c: any, next: () => Promise<
   await next();
 };
 
+app.use('/api/*', async (c,next)=>{
+  const u=c.get('user') as UserRow|undefined;
+  if(!u) return next();
+  const p=c.req.path,m=c.req.method;
+  let code:string|null=null;
+  if(p.startsWith('/api/exams')) code=m==='GET'?'CATALOG_VIEW':'EXAMS_MANAGE';
+  else if(p.startsWith('/api/digital-assets')) code=m==='GET'?'DIGITAL_VIEW':'DIGITAL_MANAGE';
+  else if(p==='/api/publishers'||p.startsWith('/api/publishers/')) code=m==='GET'?'PUBLISHERS_VIEW':'PUBLISHERS_MANAGE';
+  else if(p.startsWith('/api/opportunities')) code='OPPORTUNITIES_VIEW';
+  else if(p.startsWith('/api/order-pending')) code='ORDERS_VIEW';
+  else if(p.startsWith('/api/orders')) code=m==='GET'?'ORDERS_VIEW':m==='POST'?'ORDERS_CREATE':m==='DELETE'?'ORDERS_DELETE':'ORDERS_EDIT';
+  else if(p.startsWith('/api/reports')) code='REPORTS_VIEW';
+  else if(p.startsWith('/api/order-lists')||p.startsWith('/api/publisher-orders')||p.startsWith('/api/goods-receipts')||p.startsWith('/api/deliveries')) code=m==='GET'?'OPERATIONS_VIEW':'OPERATIONS_MANAGE';
+  else if(p.startsWith('/api/tasks')&&u.role!=='SUPER_ADMIN') code='TASKS_VIEW';
+  if(code&&!(await hasPermission(c.env.DB,u,code))) return fail(c,'Bu işlem kullanıcı yetkilerinizde kapalı.',403);
+  return next();
+});
+
 async function institutionAllowed(db: D1Database, user: UserRow, institutionId: string) {
   if (user.role === 'KURUM') return user.institution_id === institutionId;
   if (user.role === 'PERSONEL') return !!(await db.prepare(`SELECT id FROM institutions WHERE id=? AND staff_id=? AND deleted_at IS NULL`).bind(institutionId, user.id).first());
