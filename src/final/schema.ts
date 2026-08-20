@@ -13,7 +13,7 @@ async function addColumn(db: D1Database, table: string, name: string, sqlType: s
 export async function ensureFinalSchema(db: D1Database) {
   await addColumn(db, 'users', 'login_code', 'TEXT');
   await addColumn(db, 'users', 'phone', 'TEXT');
-  await addColumn(db, 'users', 'notification_enabled', 'INTEGER DEFAULT 1');
+  await addColumn(db, 'users', 'notification_enabled', 'INTEGER DEFAULT 0');
   await addColumn(db, 'exams', 'exam_type', "TEXT DEFAULT 'DENEME'");
   await addColumn(db, 'exams', 'subject', 'TEXT');
   await addColumn(db, 'exams', 'difficulty_level', 'TEXT');
