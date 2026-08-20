@@ -47,7 +47,7 @@ app.use('/api/*', async (c,next)=>{
   else if(p==='/api/publishers'||p.startsWith('/api/publishers/')) code=m==='GET'?'PUBLISHERS_VIEW':'PUBLISHERS_MANAGE';
   else if(p.startsWith('/api/opportunities')) code='OPPORTUNITIES_VIEW';
   else if(p.startsWith('/api/order-pending')) code='ORDERS_VIEW';
-  else if(p.startsWith('/api/orders')) code=m==='GET'?'ORDERS_VIEW':m==='POST'?'ORDERS_CREATE':m==='DELETE'?'ORDERS_DELETE':'ORDERS_EDIT';
+  else if(p.startsWith('/api/orders')){if(m==='GET')code='ORDERS_VIEW';else if(m==='POST')code='ORDERS_CREATE';else if(m==='DELETE')code='ORDERS_DELETE';else{const edit=await hasPermission(c.env.DB,u,'ORDERS_EDIT'),ops=await hasPermission(c.env.DB,u,'OPERATIONS_MANAGE');if(!edit&&!ops)return fail(c,'Sipariş düzenleme yetkiniz yok.',403);return next()}}
   else if(p.startsWith('/api/reports')) code='REPORTS_VIEW';
   else if(p.startsWith('/api/order-lists')||p.startsWith('/api/publisher-orders')||p.startsWith('/api/goods-receipts')||p.startsWith('/api/deliveries')) code=m==='GET'?'OPERATIONS_VIEW':'OPERATIONS_MANAGE';
   else if(p.startsWith('/api/tasks')&&u.role!=='SUPER_ADMIN') code='TASKS_VIEW';
