@@ -2,6 +2,20 @@ import { now } from './core';
 
 const SCHEMA_VERSION = '2026-08-21-permissions-reminders-orders';
 
+// These are the read-only invariants needed by the final API surface. A database
+// can have the complete schema while the marker write is temporarily blocked by
+// D1's daily write quota; requests must not fail only because that marker is absent.
+const FINAL_SCHEMA_REQUIREMENTS: Record<string, readonly string[]> = {
+  users: ['login_code', 'phone', 'notification_enabled'],
+  exams: ['exam_type', 'subject', 'difficulty_level'],
+  orders: ['confirmed_at', 'sent_to_institution_at', 'delivered_at', 'exam_applied_at', 'exam_applied_by', 'deleted_at'],
+  publisher_orders: ['b2b_ordered_at', 'b2b_notes'],
+  tasks: ['priority', 'completed_at'],
+  digital_exam_assets: ['id', 'exam_id', 'asset_type', 'form_code'],
+  user_permission_overrides: ['user_id', 'permission_code', 'is_allowed', 'updated_at'],
+  reminder_delivery_log: ['user_id', 'exam_id', 'reminder_type', 'reminder_date', 'channel', 'status', 'created_at'],
+};
+
 async function columns(db: D1Database, table: string) {
   const r = await db.prepare(`PRAGMA table_info(${table})`).all<any>();
   return new Set((r.results || []).map((x: any) => String(x.name)));
@@ -10,6 +24,26 @@ async function columns(db: D1Database, table: string) {
 async function addColumn(db: D1Database, table: string, name: string, sqlType: string) {
   const cols = await columns(db, table);
   if (!cols.has(name)) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${sqlType}`).run();
+}
+
+async function finalSchemaCompatible(db: D1Database): Promise<boolean> {
+  try {
+    for (const [table, required] of Object.entries(FINAL_SCHEMA_REQUIREMENTS)) {
+      const cols = await columns(db, table);
+      if (required.some((name) => !cols.has(name))) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isD1WriteQuotaError(error: unknown): boolean {
+  return /D1.*(?:free tier|row write).*limit|daily row write limit|exceeded D1/i.test(String(error));
+}
+
+async function persistSchemaVersion(db: D1Database) {
+  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version',?,'TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(SCHEMA_VERSION, now()).run();
 }
 
 // Fast path: every cold-start isolate used to run 24+ sequential ALTER/CREATE/INSERT
@@ -31,6 +65,19 @@ async function schemaAlreadyApplied(db: D1Database): Promise<boolean> {
 
 export async function ensureFinalSchema(db: D1Database) {
   if (await schemaAlreadyApplied(db)) return;
+
+  // If all required objects already exist, do not rerun the write-heavy upgrade
+  // chain. Persisting the marker is only an optimization; a temporary D1 write
+  // quota error must not take a ready database (and login) offline.
+  if (await finalSchemaCompatible(db)) {
+    try {
+      await persistSchemaVersion(db);
+    } catch (error) {
+      if (isD1WriteQuotaError(error)) return;
+      throw error;
+    }
+    return;
+  }
 
   await addColumn(db, 'users', 'login_code', 'TEXT');
   await addColumn(db, 'users', 'phone', 'TEXT');
@@ -118,7 +165,7 @@ export async function ensureFinalSchema(db: D1Database) {
       .bind(id,name,code,sort,now(),now()).run();
   }
 
-  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version',?,'TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(SCHEMA_VERSION, now()).run();
+  await persistSchemaVersion(db);
 }
 
 export const subjectOptions = [
