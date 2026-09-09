@@ -1,5 +1,7 @@
 import { now } from './core';
 
+const SCHEMA_VERSION = '2026-08-21-permissions-reminders-orders';
+
 async function columns(db: D1Database, table: string) {
   const r = await db.prepare(`PRAGMA table_info(${table})`).all<any>();
   return new Set((r.results || []).map((x: any) => String(x.name)));
@@ -10,7 +12,26 @@ async function addColumn(db: D1Database, table: string, name: string, sqlType: s
   if (!cols.has(name)) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${sqlType}`).run();
 }
 
+// Fast path: every cold-start isolate used to run 24+ sequential ALTER/CREATE/INSERT
+// checks on D1 for *every* request, even when the schema was already fully applied.
+// That made every new isolate slow and made the whole chain fail (and surface as
+// "Veritabanı hazırlanamadı.") whenever any single one of those round trips hiccuped.
+// Now we do one lightweight read first and skip the rest when nothing changed.
+async function schemaAlreadyApplied(db: D1Database): Promise<boolean> {
+  try {
+    const row = await db
+      .prepare(`SELECT value FROM system_settings WHERE key='final_schema_version'`)
+      .first<{ value: string }>();
+    return row?.value === SCHEMA_VERSION;
+  } catch {
+    // system_settings might not exist yet (very first run) — fall through to full migration.
+    return false;
+  }
+}
+
 export async function ensureFinalSchema(db: D1Database) {
+  if (await schemaAlreadyApplied(db)) return;
+
   await addColumn(db, 'users', 'login_code', 'TEXT');
   await addColumn(db, 'users', 'phone', 'TEXT');
   await addColumn(db, 'users', 'notification_enabled', 'INTEGER DEFAULT 0');
@@ -97,7 +118,7 @@ export async function ensureFinalSchema(db: D1Database) {
       .bind(id,name,code,sort,now(),now()).run();
   }
 
-  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version','2026-08-21-permissions-reminders-orders','TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(now()).run();
+  await db.prepare(`INSERT INTO system_settings(key,value,data_type,updated_at) VALUES('final_schema_version',?,'TEXT',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(SCHEMA_VERSION, now()).run();
 }
 
 export const subjectOptions = [
