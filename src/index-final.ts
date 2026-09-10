@@ -353,7 +353,27 @@ app.patch('/api/deliveries/:id', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL','
 });
 
 // REPORTS
-app.get('/api/reports/summary', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL'), async c=>{const db=c.env.DB;const planned=await db.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.institution_id=p.institution_id AND o.exam_id=p.exam_id AND o.status!='IPTAL') THEN 1 ELSE 0 END) converted FROM institution_exam_plans p`).first<any>();const byPublisher=await db.prepare(`SELECT p.name label,COUNT(o.id) orders,SUM(o.quantity) quantity,SUM(o.total_price) revenue FROM orders o JOIN exams e ON e.id=o.exam_id JOIN publishers p ON p.id=e.publisher_id WHERE o.status!='IPTAL' GROUP BY p.id ORDER BY revenue DESC`).all();const byGrade=await db.prepare(`SELECT g.name label,COUNT(o.id) orders,SUM(o.quantity) quantity,SUM(o.total_price) revenue FROM orders o JOIN grade_levels g ON g.id=o.grade_level_id WHERE o.status!='IPTAL' GROUP BY g.id ORDER BY g.sort_order`).all();const losses=await db.prepare(`SELECT COALESCE(loss_reason,'Belirtilmedi') label,COUNT(*) count FROM sales_opportunities WHERE status IN ('ILGILENMIYOR','BASKA_YAYINEVI_ALDI','KATILMAYACAK','ULASILAMADI') GROUP BY COALESCE(loss_reason,'Belirtilmedi') ORDER BY count DESC`).all();const applied=await db.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN sent_to_institution_at IS NOT NULL THEN 1 ELSE 0 END) sent,SUM(CASE WHEN delivered_at IS NOT NULL OR status='TESLIM_EDILDI' THEN 1 ELSE 0 END) delivered,SUM(CASE WHEN exam_applied_at IS NOT NULL THEN 1 ELSE 0 END) applied FROM orders WHERE status!='IPTAL'`).first();return c.json({ok:true,planned,by_publisher:byPublisher.results,by_grade:byGrade.results,losses:losses.results,operations:applied})});
+app.get('/api/reports/summary', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL'), async c=>{
+  const db=c.env.DB,u=c.get('user'),seasonId=c.req.query('season_id')||'',gradeId=c.req.query('grade_level_id')||'',publisherId=c.req.query('publisher_id')||'';
+  const filters=(seasonCol:string,gradeCol:string,publisherCol:string,staffCol:string)=>{
+    const where:string[]=[],vals:any[]=[];
+    if(seasonId){where.push(seasonCol+'=?');vals.push(seasonId)}
+    if(gradeId){where.push(gradeCol+'=?');vals.push(gradeId)}
+    if(publisherId){where.push(publisherCol+'=?');vals.push(publisherId)}
+    if(u.role==='PERSONEL'){where.push(staffCol+'=?');vals.push(u.id)}
+    return {sql:where.length?' AND '+where.join(' AND '):'',vals};
+  };
+  const pf=filters('p.season_id','p.grade_level_id','e.publisher_id','i.staff_id');
+  const of=filters('o.season_id','o.grade_level_id','e.publisher_id','o.staff_id');
+  const sf=filters('so.season_id','so.grade_level_id','e.publisher_id','so.staff_id');
+  const planned=await db.prepare("SELECT COUNT(*) total,COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM orders o2 WHERE o2.institution_id=p.institution_id AND o2.exam_id=p.exam_id AND o2.status!='IPTAL' AND o2.deleted_at IS NULL) THEN 1 ELSE 0 END),0) converted FROM institution_exam_plans p JOIN institutions i ON i.id=p.institution_id JOIN exams e ON e.id=p.exam_id WHERE 1=1"+pf.sql).bind(...pf.vals).first<any>();
+  const byPublisher=await db.prepare("SELECT p.name label,COUNT(o.id) orders,COALESCE(SUM(o.quantity),0) quantity,COALESCE(SUM(o.total_price),0) revenue FROM orders o JOIN exams e ON e.id=o.exam_id JOIN publishers p ON p.id=e.publisher_id WHERE o.status!='IPTAL' AND o.deleted_at IS NULL"+of.sql+" GROUP BY p.id,p.name ORDER BY revenue DESC").bind(...of.vals).all();
+  const byGrade=await db.prepare("SELECT g.name label,COUNT(o.id) orders,COALESCE(SUM(o.quantity),0) quantity,COALESCE(SUM(o.total_price),0) revenue FROM orders o JOIN exams e ON e.id=o.exam_id JOIN grade_levels g ON g.id=o.grade_level_id WHERE o.status!='IPTAL' AND o.deleted_at IS NULL"+of.sql+" GROUP BY g.id,g.name ORDER BY g.sort_order").bind(...of.vals).all();
+  const losses=await db.prepare("SELECT COALESCE(so.loss_reason,'Belirtilmedi') label,COUNT(*) count FROM sales_opportunities so JOIN exams e ON e.id=so.exam_id WHERE so.status IN ('ILGILENMIYOR','BASKA_YAYINEVI_ALDI','KATILMAYACAK','ULASILAMADI')"+sf.sql+" GROUP BY COALESCE(so.loss_reason,'Belirtilmedi') ORDER BY count DESC").bind(...sf.vals).all();
+  const applied=await db.prepare("SELECT COUNT(*) total,COALESCE(SUM(quantity),0) quantity,COALESCE(SUM(total_price),0) revenue,COALESCE(SUM(CASE WHEN sent_to_institution_at IS NOT NULL THEN 1 ELSE 0 END),0) sent,COALESCE(SUM(CASE WHEN delivered_at IS NOT NULL OR status='TESLIM_EDILDI' THEN 1 ELSE 0 END),0) delivered,COALESCE(SUM(CASE WHEN exam_applied_at IS NOT NULL THEN 1 ELSE 0 END),0) applied FROM orders o JOIN exams e ON e.id=o.exam_id WHERE o.status!='IPTAL' AND o.deleted_at IS NULL"+of.sql).bind(...of.vals).first<any>();
+  const status=await db.prepare("SELECT o.status,COUNT(*) count,COALESCE(SUM(o.quantity),0) quantity FROM orders o JOIN exams e ON e.id=o.exam_id WHERE o.status!='IPTAL' AND o.deleted_at IS NULL"+of.sql+" GROUP BY o.status ORDER BY count DESC").bind(...of.vals).all();
+  return c.json({ok:true,filters:{season_id:seasonId,grade_level_id:gradeId,publisher_id:publisherId},planned,by_publisher:byPublisher.results,by_grade:byGrade.results,losses:losses.results,operations:applied,status_summary:status.results});
+});
 
 // USERS / SEASONS
 app.get('/api/users', requireRoles('SUPER_ADMIN','ADMIN'), async c=>{const r=await c.env.DB.prepare(`SELECT id,email,login_code,full_name,role,status,institution_id,must_change_password,phone,notification_enabled,created_at FROM users WHERE deleted_at IS NULL ORDER BY CASE role WHEN 'SUPER_ADMIN' THEN 0 ELSE 1 END,full_name`).all();return c.json({ok:true,items:r.results})});
