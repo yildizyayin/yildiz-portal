@@ -61,6 +61,20 @@ async function institutionAllowed(db: D1Database, user: UserRow, institutionId: 
   return true;
 }
 
+async function denemeServiceEnabled(db: D1Database, user: UserRow) {
+  if (isAdmin(user) || user.role === 'PERSONEL' || user.role === 'OPERASYON') return true;
+  if (user.role !== 'KURUM' || !user.institution_id) return false;
+  const row = await db.prepare(`SELECT enabled,starts_at,ends_at FROM institution_services WHERE institution_id=? AND service_key='DENEME_SERVISI' LIMIT 1`).bind(user.institution_id).first<{enabled:number;starts_at:string|null;ends_at:string|null}>();
+  if (!row || Number(row.enabled) !== 1) return false;
+  const todayValue = today();
+  return (!row.starts_at || row.starts_at <= todayValue) && (!row.ends_at || row.ends_at >= todayValue);
+}
+
+const serviceManager = (c:any) => {
+  const u = c.get('user') as UserRow;
+  return isAdmin(u);
+};
+
 async function upsertInstitutionPortalUser(db: D1Database, institution: { id: string; name: string; code: string }, password?: string) {
   if (!password) return;
   if (password.length < 8) throw new Error('Kurum şifresi en az 8 karakter olmalı.');
@@ -105,6 +119,39 @@ app.post('/api/auth/logout', async c => {
   c.header('Set-Cookie','yd_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
   return c.json({ ok: true });
 });
+app.get('/api/services/deneme/status', async c => {
+  const u = c.get('user') as UserRow;
+  const enabled = await denemeServiceEnabled(c.env.DB, u);
+  return c.json({ ok: true, service_key: 'DENEME_SERVISI', enabled, can_manage: serviceManager(c) });
+});
+
+app.get('/api/services/deneme/institutions', requireRoles('SUPER_ADMIN', 'ADMIN'), async c => {
+  const rows = await c.env.DB.prepare(`SELECT i.id,i.name,i.code,i.province,i.district,i.is_active,
+    COALESCE(s.enabled,0) enabled,s.starts_at,s.ends_at,s.allowed_grade_ids,s.notes
+    FROM institutions i
+    LEFT JOIN institution_services s ON s.institution_id=i.id AND s.service_key='DENEME_SERVISI'
+    WHERE i.deleted_at IS NULL ORDER BY i.name`).all();
+  return c.json({ ok: true, items: rows.results });
+});
+
+app.put('/api/services/deneme/institutions/:institutionId', requireRoles('SUPER_ADMIN', 'ADMIN'), async c => {
+  const institutionId = c.req.param('institutionId');
+  const institution = await c.env.DB.prepare(`SELECT id FROM institutions WHERE id=? AND deleted_at IS NULL`).bind(institutionId).first<{id:string}>();
+  if (!institution) return fail(c, 'Kurum bulunamadı.', 404);
+  const body:any = await c.req.json().catch(() => ({}));
+  const enabled = body.enabled === true || body.enabled === 1 || body.enabled === '1' ? 1 : 0;
+  const startsAt = body.starts_at ? String(body.starts_at).slice(0,10) : null;
+  const endsAt = body.ends_at ? String(body.ends_at).slice(0,10) : null;
+  if (startsAt && endsAt && startsAt > endsAt) return fail(c, 'Başlangıç tarihi bitiş tarihinden sonra olamaz.', 400);
+  const previous = await c.env.DB.prepare(`SELECT enabled,starts_at,ends_at FROM institution_services WHERE institution_id=? AND service_key='DENEME_SERVISI'`).bind(institutionId).first();
+  await c.env.DB.prepare(`INSERT INTO institution_services(id,institution_id,service_key,enabled,starts_at,ends_at,allowed_grade_ids,notes,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(institution_id,service_key) DO UPDATE SET enabled=excluded.enabled,starts_at=excluded.starts_at,ends_at=excluded.ends_at,allowed_grade_ids=excluded.allowed_grade_ids,notes=excluded.notes,updated_at=excluded.updated_at`)
+    .bind(uid('service'),institutionId,'DENEME_SERVISI',enabled,startsAt,endsAt,body.allowed_grade_ids ? String(body.allowed_grade_ids) : null,body.notes ? String(body.notes).slice(0,500) : null,now(),now()).run();
+  await audit(c.env.DB,c.get('user'), 'DENEME_SERVICE_ACCESS', 'institution', institutionId, previous || null, {enabled,starts_at:startsAt,ends_at:endsAt});
+  return c.json({ ok: true, service_key:'DENEME_SERVISI', institution_id:institutionId, enabled:Boolean(enabled), starts_at:startsAt, ends_at:endsAt });
+});
+
 app.post('/api/auth/change-password', async c => {
   const u = c.get('user'); const b: any = await c.req.json().catch(() => ({}));
   if (!b.current_password || !b.new_password || String(b.new_password).length < 10) return fail(c,'Yeni şifre en az 10 karakter olmalı.');
