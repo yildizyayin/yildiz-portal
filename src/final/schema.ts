@@ -1,6 +1,6 @@
 import { now } from './core';
 
-const SCHEMA_VERSION = '2026-08-21-permissions-reminders-orders';
+const SCHEMA_VERSION = '2026-09-10-delivery-operations';
 
 // These are the read-only invariants needed by the final API surface. A database
 // can have the complete schema while the marker write is temporarily blocked by
@@ -10,6 +10,7 @@ const FINAL_SCHEMA_REQUIREMENTS: Record<string, readonly string[]> = {
   exams: ['exam_type', 'subject', 'difficulty_level'],
   orders: ['confirmed_at', 'sent_to_institution_at', 'delivered_at', 'exam_applied_at', 'exam_applied_by', 'deleted_at'],
   publisher_orders: ['b2b_ordered_at', 'b2b_notes'],
+  deliveries: ['id', 'order_id', 'quantity', 'delivery_method', 'carrier', 'tracking_number', 'delivery_date', 'delivered_by', 'status', 'notes', 'created_at', 'updated_at'],
   tasks: ['priority', 'completed_at'],
   digital_exam_assets: ['id', 'exam_id', 'asset_type', 'form_code'],
   user_permission_overrides: ['user_id', 'permission_code', 'is_allowed', 'updated_at'],
@@ -93,6 +94,7 @@ export async function ensureFinalSchema(db: D1Database) {
   await addColumn(db, 'orders', 'deleted_at', 'DATETIME');
   await addColumn(db, 'publisher_orders', 'b2b_ordered_at', 'DATETIME');
   await addColumn(db, 'publisher_orders', 'b2b_notes', 'TEXT');
+  await addColumn(db, 'deliveries', 'tracking_url', 'TEXT');
   await addColumn(db, 'tasks', 'priority', "TEXT DEFAULT 'MEDIUM'");
   await addColumn(db, 'tasks', 'completed_at', 'DATETIME');
 
