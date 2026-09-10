@@ -269,9 +269,68 @@ app.patch('/api/publisher-orders/:id', requireRoles('SUPER_ADMIN','ADMIN','OPERA
 app.post('/api/goods-receipts', requireRoles('SUPER_ADMIN','ADMIN','OPERASYON'), async c=>{const b:any=await c.req.json();if(!b.publisher_order_id||Number(b.received_quantity)<=0)return fail(c,'Sipariş listesi ve gelen adet gerekli.');const po=await c.env.DB.prepare(`SELECT * FROM publisher_orders WHERE id=?`).bind(b.publisher_order_id).first<any>();if(!po)return fail(c,'Sipariş listesi bulunamadı.',404);const incoming=Number(b.received_quantity),newReceived=Number(po.received_quantity||0)+incoming,missing=Math.max(0,Number(po.total_quantity)-newReceived),status=missing===0?'TAM_GELDI':'KISMI_GELDI';await c.env.DB.prepare(`INSERT INTO goods_receipts(id,publisher_order_id,received_date,received_quantity,missing_quantity,notes,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`).bind(uid('gr'),po.id,b.received_date||today(),incoming,missing,b.notes||null,status,now(),now()).run();await c.env.DB.prepare(`UPDATE publisher_orders SET received_quantity=?,missing_quantity=?,status=?,updated_at=? WHERE id=?`).bind(newReceived,missing,status,now(),po.id).run();if(missing===0){const alloc=await c.env.DB.prepare(`SELECT order_id FROM publisher_order_allocations WHERE publisher_order_id=?`).bind(po.id).all<any>();for(const a of alloc.results)await c.env.DB.prepare(`UPDATE orders SET status='URUN_GELDI',updated_at=? WHERE id=?`).bind(now(),a.order_id).run()}return c.json({ok:true,received:newReceived,missing,status})});
 
 // DELIVERIES
-app.get('/api/deliveries', async c=>{const u=c.get('user');let sql=`SELECT d.*,o.institution_id,o.exam_id,i.name institution_name,e.name exam_name,g.name grade_name FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN institutions i ON i.id=o.institution_id JOIN exams e ON e.id=o.exam_id JOIN grade_levels g ON g.id=o.grade_level_id WHERE 1=1`;const vals:any[]=[];if(u.role==='KURUM'){sql+=' AND o.institution_id=?';vals.push(u.institution_id)}if(u.role==='PERSONEL'){sql+=' AND o.staff_id=?';vals.push(u.id)}sql+=' ORDER BY d.created_at DESC';const r=await c.env.DB.prepare(sql).bind(...vals).all();return c.json({ok:true,items:r.results})});
-app.post('/api/deliveries', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL','OPERASYON'), async c=>{const u=c.get('user'),b:any=await c.req.json();const order=await c.env.DB.prepare(`SELECT * FROM orders WHERE id=?`).bind(b.order_id).first<any>();if(!order)return fail(c,'Sipariş bulunamadı.',404);if(!(await institutionAllowed(c.env.DB,u,order.institution_id)))return fail(c,'Yetkisiz.',403);const rid=uid('del');await c.env.DB.prepare(`INSERT INTO deliveries(id,order_id,quantity,delivery_method,carrier,tracking_number,delivery_date,delivered_by,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).bind(rid,order.id,Number(b.quantity||order.quantity),b.delivery_method||'KARGO',b.carrier||null,b.tracking_number||null,b.delivery_date||null,null,b.status||'HAZIRLANIYOR',b.notes||null,now(),now()).run();return c.json({ok:true,id:rid},201)});
-app.patch('/api/deliveries/:id', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL','OPERASYON'), async c=>{const u=c.get('user'),rid=c.req.param('id'),b:any=await c.req.json();const row=await c.env.DB.prepare(`SELECT d.*,o.institution_id,o.id order_id FROM deliveries d JOIN orders o ON o.id=d.order_id WHERE d.id=?`).bind(rid).first<any>();if(!row)return fail(c,'Teslimat bulunamadı.',404);if(!(await institutionAllowed(c.env.DB,u,row.institution_id)))return fail(c,'Yetkisiz.',403);const status=b.status??row.status,date=status==='TESLIM_EDILDI'?(b.delivery_date||row.delivery_date||today()):(b.delivery_date??row.delivery_date);await c.env.DB.prepare(`UPDATE deliveries SET status=?,delivery_method=?,carrier=?,tracking_number=?,delivery_date=?,delivered_by=?,notes=?,updated_at=? WHERE id=?`).bind(status,b.delivery_method??row.delivery_method,b.carrier??row.carrier,b.tracking_number??row.tracking_number,date,status==='TESLIM_EDILDI'?u.id:row.delivered_by,b.notes??row.notes,now(),rid).run();if(status==='TESLIM_EDILDI')await c.env.DB.prepare(`UPDATE orders SET status='TESLIM_EDILDI',delivered_at=COALESCE(delivered_at,?),updated_at=? WHERE id=?`).bind(now(),now(),row.order_id).run();return c.json({ok:true})});
+const DELIVERY_STATUSES = new Set(['HAZIRLANIYOR','HAZIR','SEVK_EDILDI','TESLIM_EDILDI','IADE']);
+const DELIVERY_METHODS = new Set(['KARGO','PERSONEL_TESLIM','KURUMDAN_TESLIM']);
+const normalizeDeliveryStatus = (value:any) => {
+  const status=String(value||'').trim().toUpperCase();
+  return ['KARGO','PERSONEL_TESLIM','KURUMDAN_TESLIM'].includes(status)?'SEVK_EDILDI':status;
+};
+const validTrackingUrl = (value:any) => {
+  if (!value) return true;
+  try { const url=new URL(String(value)); return ['http:','https:'].includes(url.protocol); } catch { return false; }
+};
+
+// DELIVERIES
+app.get('/api/deliveries', async c=>{
+  const u=c.get('user');
+  let sql="SELECT d.*,o.institution_id,o.exam_id,o.quantity order_quantity,o.status order_status,i.name institution_name,e.name exam_name,e.code exam_code,e.estimated_ship_date,e.application_start_date,e.application_end_date,g.name grade_name,COALESCE((SELECT SUM(d2.quantity) FROM deliveries d2 WHERE d2.order_id=d.order_id AND d2.status!='IADE'),0) delivered_quantity FROM deliveries d JOIN orders o ON o.id=d.order_id JOIN institutions i ON i.id=o.institution_id JOIN exams e ON e.id=o.exam_id JOIN grade_levels g ON g.id=o.grade_level_id WHERE o.deleted_at IS NULL";
+  const vals:any[]=[];
+  if(u.role==='KURUM'){sql+=' AND o.institution_id=?';vals.push(u.institution_id)}
+  if(u.role==='PERSONEL'){sql+=' AND o.staff_id=?';vals.push(u.id)}
+  sql+=' ORDER BY d.created_at DESC';
+  const r=await c.env.DB.prepare(sql).bind(...vals).all();
+  return c.json({ok:true,items:r.results});
+});
+app.post('/api/deliveries', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL','OPERASYON'), async c=>{
+  const u=c.get('user'),b:any=await c.req.json(),orderId=String(b.order_id||'');
+  const order=await c.env.DB.prepare("SELECT * FROM orders WHERE id=? AND deleted_at IS NULL").bind(orderId).first<any>();
+  if(!order)return fail(c,'Sipariş bulunamadı.',404);
+  if(!(await institutionAllowed(c.env.DB,u,order.institution_id)))return fail(c,'Yetkisiz.',403);
+  if(order.status==='IPTAL'||order.delivered_at)return fail(c,'Bu sipariş için yeni teslimat açılamaz.',409);
+  const quantity=Number(b.quantity),status=normalizeDeliveryStatus(b.status||'HAZIRLANIYOR'),method=String(b.delivery_method||'KARGO').toUpperCase();
+  if(!Number.isFinite(quantity)||quantity<=0)return fail(c,'Teslimat adedi 0’dan büyük olmalı.');
+  if(!DELIVERY_STATUSES.has(status))return fail(c,'Geçersiz teslimat durumu.');
+  if(!DELIVERY_METHODS.has(method))return fail(c,'Geçersiz teslim yöntemi.');
+  if(!validTrackingUrl(b.tracking_url))return fail(c,'Takip bağlantısı http veya https olmalı.');
+  const delivered=await c.env.DB.prepare("SELECT COALESCE(SUM(quantity),0) total FROM deliveries WHERE order_id=? AND status!='IADE'").bind(order.id).first<any>();
+  const remaining=Math.max(0,Number(order.quantity||0)-Number(delivered?.total||0));
+  if(quantity>remaining)return fail(c,remaining?('Bu siparişte kalan teslim edilebilir adet: '+remaining):'Siparişin teslim edilebilir adedi kalmadı.',409);
+  const rid=uid('del');
+  await c.env.DB.prepare("INSERT INTO deliveries(id,order_id,quantity,delivery_method,carrier,tracking_number,tracking_url,delivery_date,delivered_by,status,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(rid,order.id,quantity,method,String(b.carrier||'').trim()||null,String(b.tracking_number||'').trim()||null,String(b.tracking_url||'').trim()||null,b.delivery_date||null,status==='TESLIM_EDILDI'?u.id:null,status,String(b.notes||'').trim()||null,now(),now()).run();
+  if(['SEVK_EDILDI','TESLIM_EDILDI'].includes(status))await c.env.DB.prepare("UPDATE orders SET sent_to_institution_at=COALESCE(sent_to_institution_at,?),updated_at=? WHERE id=?").bind(now(),now(),order.id).run();
+  if(status==='TESLIM_EDILDI')await c.env.DB.prepare("UPDATE orders SET status='TESLIM_EDILDI',delivered_at=COALESCE(delivered_at,?),updated_at=? WHERE id=?").bind(now(),now(),order.id).run();
+  await audit(c.env.DB,u,'CREATE','delivery',rid,undefined,{order_id:order.id,quantity,status,delivery_method:method});
+  return c.json({ok:true,id:rid,remaining:remaining-quantity},201);
+});
+app.patch('/api/deliveries/:id', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL','OPERASYON'), async c=>{
+  const u=c.get('user'),rid=c.req.param('id'),b:any=await c.req.json();
+  const row=await c.env.DB.prepare("SELECT d.*,o.institution_id,o.id order_id,o.status order_status FROM deliveries d JOIN orders o ON o.id=d.order_id WHERE d.id=? AND o.deleted_at IS NULL").bind(rid).first<any>();
+  if(!row)return fail(c,'Teslimat bulunamadı.',404);
+  if(!(await institutionAllowed(c.env.DB,u,row.institution_id)))return fail(c,'Yetkisiz.',403);
+  const status=normalizeDeliveryStatus(b.status===undefined?row.status:b.status),method=String(b.delivery_method===undefined?row.delivery_method:b.delivery_method||'KARGO').toUpperCase();
+  if(!DELIVERY_STATUSES.has(status))return fail(c,'Geçersiz teslimat durumu.');
+  if(!DELIVERY_METHODS.has(method))return fail(c,'Geçersiz teslim yöntemi.');
+  if(!validTrackingUrl(b.tracking_url===undefined?row.tracking_url:b.tracking_url))return fail(c,'Takip bağlantısı http veya https olmalı.');
+  const date=status==='TESLIM_EDILDI'?(b.delivery_date||row.delivery_date||today()):(b.delivery_date===undefined?row.delivery_date:b.delivery_date);
+  const deliveredBy=status==='TESLIM_EDILDI'?(row.delivered_by||u.id):row.delivered_by;
+  await c.env.DB.prepare("UPDATE deliveries SET status=?,delivery_method=?,carrier=?,tracking_number=?,tracking_url=?,delivery_date=?,delivered_by=?,notes=?,updated_at=? WHERE id=?")
+    .bind(status,method,b.carrier===undefined?row.carrier:String(b.carrier||'').trim()||null,b.tracking_number===undefined?row.tracking_number:String(b.tracking_number||'').trim()||null,b.tracking_url===undefined?row.tracking_url:String(b.tracking_url||'').trim()||null,date,deliveredBy,b.notes===undefined?row.notes:String(b.notes||'').trim()||null,now(),rid).run();
+  if(['SEVK_EDILDI','TESLIM_EDILDI'].includes(status))await c.env.DB.prepare("UPDATE orders SET sent_to_institution_at=COALESCE(sent_to_institution_at,?),updated_at=? WHERE id=?").bind(now(),now(),row.order_id).run();
+  if(status==='TESLIM_EDILDI')await c.env.DB.prepare("UPDATE orders SET status='TESLIM_EDILDI',delivered_at=COALESCE(delivered_at,?),updated_at=? WHERE id=?").bind(now(),now(),row.order_id).run();
+  await audit(c.env.DB,u,'UPDATE','delivery',rid,row,b);
+  return c.json({ok:true});
+});
 
 // REPORTS
 app.get('/api/reports/summary', requireRoles('SUPER_ADMIN','ADMIN','PERSONEL'), async c=>{const db=c.env.DB;const planned=await db.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.institution_id=p.institution_id AND o.exam_id=p.exam_id AND o.status!='IPTAL') THEN 1 ELSE 0 END) converted FROM institution_exam_plans p`).first<any>();const byPublisher=await db.prepare(`SELECT p.name label,COUNT(o.id) orders,SUM(o.quantity) quantity,SUM(o.total_price) revenue FROM orders o JOIN exams e ON e.id=o.exam_id JOIN publishers p ON p.id=e.publisher_id WHERE o.status!='IPTAL' GROUP BY p.id ORDER BY revenue DESC`).all();const byGrade=await db.prepare(`SELECT g.name label,COUNT(o.id) orders,SUM(o.quantity) quantity,SUM(o.total_price) revenue FROM orders o JOIN grade_levels g ON g.id=o.grade_level_id WHERE o.status!='IPTAL' GROUP BY g.id ORDER BY g.sort_order`).all();const losses=await db.prepare(`SELECT COALESCE(loss_reason,'Belirtilmedi') label,COUNT(*) count FROM sales_opportunities WHERE status IN ('ILGILENMIYOR','BASKA_YAYINEVI_ALDI','KATILMAYACAK','ULASILAMADI') GROUP BY COALESCE(loss_reason,'Belirtilmedi') ORDER BY count DESC`).all();const applied=await db.prepare(`SELECT COUNT(*) total,SUM(CASE WHEN sent_to_institution_at IS NOT NULL THEN 1 ELSE 0 END) sent,SUM(CASE WHEN delivered_at IS NOT NULL OR status='TESLIM_EDILDI' THEN 1 ELSE 0 END) delivered,SUM(CASE WHEN exam_applied_at IS NOT NULL THEN 1 ELSE 0 END) applied FROM orders WHERE status!='IPTAL'`).first();return c.json({ok:true,planned,by_publisher:byPublisher.results,by_grade:byGrade.results,losses:losses.results,operations:applied})});
